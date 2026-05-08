@@ -16,9 +16,10 @@ const BUILTIN_NAMES = new Set(["read", "bash", "edit", "write", "grep", "find", 
 
 const CONTEXT_MODE_ARG_HINT =
   `\n\nPi MCP call format: pass a JSON object with named fields, never positional args and never empty args. ` +
-  `For ctx_execute use {"language":"javascript","code":"console.log('summary')"} or {"language":"shell","code":"echo ok"}. ` +
+  `For ctx_execute prefer {"language":"javascript","code":"console.log('summary')"} or {"language":"shell","code":"echo ok"}. ` +
   `For ctx_execute_file use {"path":"/abs/file","language":"javascript","code":"console.log(FILE_CONTENT.length)"}. ` +
-  `On Windows prefer language="javascript" or "python" for grep/search analysis; if using PowerShell syntax, boolean switches are -CaseSensitive (no colon).`;
+  `Avoid Python for quick ctx_execute snippets on Windows when the code contains string escapes like '\\n'; JSON/tool escaping can turn them into literal newlines and cause SyntaxError. ` +
+  `If Python is necessary, avoid quoted newline escapes: use chr(10), print(*items, sep=chr(10)), or a print loop. PowerShell boolean switches use -CaseSensitive (no colon).`;
 
 function isContextModeTool(spec: DirectToolSpec): boolean {
   return spec.serverName === "context-mode" || spec.prefixedName.startsWith("context_mode_") || spec.originalName.startsWith("ctx_");
@@ -44,7 +45,7 @@ function formatContextModeArgumentError(spec: DirectToolSpec, message: string): 
       `  {"language":"javascript","code":"console.log('summary')"}`,
       `or`,
       `  {"language":"shell","code":"echo ok"}`,
-      `Do not call ctx_execute with no args or positional args.`,
+      `Do not call ctx_execute with no args or positional args. Prefer javascript over python for small snippets; if using Python, avoid quoted \\n escapes (use chr(10) or print loops).`,
       `Original MCP error: ${message}`,
     ].join("\n");
   }
