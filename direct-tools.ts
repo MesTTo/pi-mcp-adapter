@@ -14,6 +14,51 @@ import { formatAuthRequiredMessage } from "./utils.js";
 
 const BUILTIN_NAMES = new Set(["read", "bash", "edit", "write", "grep", "find", "ls", "mcp"]);
 
+const CONTEXT_MODE_ARG_HINT =
+  `\n\nPi MCP call format: pass a JSON object with named fields, never positional args and never empty args. ` +
+  `For ctx_execute use {"language":"javascript","code":"console.log('summary')"} or {"language":"shell","code":"echo ok"}. ` +
+  `For ctx_execute_file use {"path":"/abs/file","language":"javascript","code":"console.log(FILE_CONTENT.length)"}. ` +
+  `On Windows prefer language="javascript" or "python" for grep/search analysis; if using PowerShell syntax, boolean switches are -CaseSensitive (no colon).`;
+
+function isContextModeTool(spec: DirectToolSpec): boolean {
+  return spec.serverName === "context-mode" || spec.prefixedName.startsWith("context_mode_") || spec.originalName.startsWith("ctx_");
+}
+
+export function enhanceDirectToolDescription(spec: DirectToolSpec): string {
+  let description = spec.description || "(no description)";
+  if (isContextModeTool(spec) && ["ctx_execute", "ctx_execute_file", "ctx_batch_execute"].includes(spec.originalName)) {
+    description += CONTEXT_MODE_ARG_HINT;
+  }
+  return description;
+}
+
+function isArgumentValidationError(message: string): boolean {
+  return /Input validation error|Invalid arguments for tool|invalid_type|required/i.test(message);
+}
+
+function formatContextModeArgumentError(spec: DirectToolSpec, message: string): string | null {
+  if (!isContextModeTool(spec) || !isArgumentValidationError(message)) return null;
+  if (spec.originalName === "ctx_execute") {
+    return [
+      `Invalid context-mode ctx_execute arguments. Required JSON object:`,
+      `  {"language":"javascript","code":"console.log('summary')"}`,
+      `or`,
+      `  {"language":"shell","code":"echo ok"}`,
+      `Do not call ctx_execute with no args or positional args.`,
+      `Original MCP error: ${message}`,
+    ].join("\n");
+  }
+  if (spec.originalName === "ctx_execute_file") {
+    return [
+      `Invalid context-mode ctx_execute_file arguments. Required JSON object:`,
+      `  {"path":"/absolute/or/project/file","language":"javascript","code":"console.log(FILE_CONTENT.length)"}`,
+      `Do not call ctx_execute_file with no args or positional args.`,
+      `Original MCP error: ${message}`,
+    ].join("\n");
+  }
+  return `${message}${CONTEXT_MODE_ARG_HINT}`;
+}
+
 type DirectAutoAuthResult =
   | { status: "skipped" }
   | { status: "success" }
@@ -253,8 +298,13 @@ export function buildProxyDescription(
   desc += `  mcp({ search: "query" })              → Search MCP tools by name/description\n`;
   desc += `  mcp({ describe: "tool_name" })        → Show tool details and parameters\n`;
   desc += `  mcp({ connect: "server-name" })       → Connect to a server and refresh metadata\n`;
-  desc += `  mcp({ tool: "name", args: '{"key": "value"}' })    → Call a tool (args is JSON string)\n`;
+  desc += `  mcp({ tool: "name", args: '{"key": "value"}' })    → Call a tool (args must be a JSON string containing the tool's named parameters)\n`;
   desc += `  mcp({ action: "ui-messages" })        → Retrieve accumulated messages from completed UI sessions\n`;
+  desc += `\nContext-mode examples through this proxy:\n`;
+  desc += `  mcp({ tool: "context_mode_ctx_execute", args: '{"language":"javascript","code":"console.log(\\"ok\\")"}' })\n`;
+  desc += `  mcp({ tool: "context_mode_ctx_execute_file", args: '{"path":"README.md","language":"javascript","code":"console.log(FILE_CONTENT.slice(0,80))"}' })\n`;
+  desc += `  Never call ctx_execute/ctx_execute_file with empty args or positional args.\n`;
+  desc += `  Windows note: prefer language="javascript"/"python" for search/parsing; PowerShell boolean switches use -CaseSensitive, not -CaseSensitive:.\n`;
   desc += `\nMode: tool (call) > connect > describe > search > server (list) > action > nothing (status)`;
 
   return desc;
@@ -375,7 +425,10 @@ export function createDirectToolExecutor(
 
       if (result.isError) {
         let errorText = content.filter(c => c.type === "text").map(c => (c as { text: string }).text).join("\n") || "Tool execution failed";
-        if (spec.inputSchema) {
+        const contextModeHint = formatContextModeArgumentError(spec, errorText);
+        if (contextModeHint) {
+          errorText = contextModeHint;
+        } else if (spec.inputSchema && isArgumentValidationError(errorText)) {
           errorText += `\n\nExpected parameters:\n${formatSchema(spec.inputSchema)}`;
         }
         return {
@@ -403,7 +456,10 @@ export function createDirectToolExecutor(
       const message = error instanceof Error ? error.message : String(error);
       uiSession?.sendToolCancelled(message);
       let errorText = `Failed to call tool: ${message}`;
-      if (spec.inputSchema) {
+      const contextModeHint = formatContextModeArgumentError(spec, message);
+      if (contextModeHint) {
+        errorText = contextModeHint;
+      } else if (spec.inputSchema && isArgumentValidationError(message)) {
         errorText += `\n\nExpected parameters:\n${formatSchema(spec.inputSchema)}`;
       }
       return {

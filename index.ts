@@ -3,7 +3,7 @@ import type { McpExtensionState } from "./state.js";
 import { Type } from "typebox";
 import { showStatus, showTools, reconnectServers, authenticateServer, openMcpPanel, openMcpSetup } from "./commands.js";
 import { loadMcpConfig } from "./config.js";
-import { buildProxyDescription, createDirectToolExecutor, getMissingConfiguredDirectToolServers, resolveDirectTools } from "./direct-tools.js";
+import { buildProxyDescription, createDirectToolExecutor, enhanceDirectToolDescription, getMissingConfiguredDirectToolServers, resolveDirectTools } from "./direct-tools.js";
 import { flushMetadataCache, initializeMcp, updateStatusBar } from "./init.js";
 import { loadMetadataCache } from "./metadata-cache.js";
 import { executeCall, executeConnect, executeDescribe, executeList, executeSearch, executeStatus, executeUiMessages } from "./proxy-modes.js";
@@ -69,8 +69,8 @@ export default function mcpAdapter(pi: ExtensionAPI) {
     pi.registerTool({
       name: spec.prefixedName,
       label: `MCP: ${spec.originalName}`,
-      description: spec.description || "(no description)",
-      promptSnippet: truncateAtWord(spec.description, 100) || `MCP tool from ${spec.serverName}`,
+      description: enhanceDirectToolDescription(spec),
+      promptSnippet: truncateAtWord(enhanceDirectToolDescription(spec), 100) || `MCP tool from ${spec.serverName}`,
       parameters: Type.Unsafe<Record<string, unknown>>(spec.inputSchema || { type: "object", properties: {} }),
       execute: createDirectToolExecutor(() => state, () => initPromise, spec),
     });
