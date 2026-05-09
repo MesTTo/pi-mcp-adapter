@@ -1,6 +1,6 @@
-import { complete, type Api, type AssistantMessage, type Message, type Model, type TextContent } from "@mariozechner/pi-ai";
+import { complete, type Api, type AssistantMessage, type Message, type Model, type TextContent } from "@earendil-works/pi-ai";
 import { truncateAtWord } from "./utils.js";
-import type { ExtensionUIContext, ModelRegistry } from "@mariozechner/pi-coding-agent";
+import type { ExtensionUIContext, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   CreateMessageRequestSchema,
