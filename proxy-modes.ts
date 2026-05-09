@@ -16,6 +16,23 @@ type AutoAuthResult =
   | { status: "success" }
   | { status: "failed"; message: string };
 
+
+function isContextModeToolCall(serverName: string, toolName: string): boolean {
+  return serverName === "context-mode" || toolName.startsWith("context_mode_") || toolName.startsWith("ctx_");
+}
+
+function formatContextModeRuntimeError(serverName: string, toolName: string, message: string): string | null {
+  if (!isContextModeToolCall(serverName, toolName)) return null;
+  if (!/ParserError|PowerShell|empty pipe element|Expected parameters|ctx_execute|Exit code/i.test(message)) return null;
+  return [
+    message,
+    "",
+    "Context-mode reliability hint: on Windows, do not pass complex PowerShell pipelines to ctx_execute with language=\"shell\".",
+    "Use language=\"javascript\" for parsing/summarizing, or create a temporary .ps1 file and run it directly via bash/ssh. This avoids PowerShell quoting/pipeline corruption like empty pipe elements.",
+    "ctx_execute still requires named JSON args, e.g. {\"language\":\"javascript\",\"code\":\"console.log('ok')\"}.",
+  ].join("\n");
+}
+
 function getAuthRequiredMessage(
   state: McpExtensionState,
   serverName: string,
@@ -734,7 +751,8 @@ export async function executeCall(
         .join("\n");
 
       if (result.isError) {
-        let errorWithSchema = `Error: ${mcpText || "Tool execution failed"}`;
+        const rawError = mcpText || "Tool execution failed";
+        let errorWithSchema = `Error: ${formatContextModeRuntimeError(serverName, toolMeta.name ?? toolMeta.originalName, rawError) ?? rawError}`;
         if (toolMeta.inputSchema) {
           errorWithSchema += `\n\nExpected parameters:\n${formatSchema(toolMeta.inputSchema)}`;
         }
@@ -765,7 +783,7 @@ export async function executeCall(
         .map((c) => (c as { text: string }).text)
         .join("\n") || "Tool execution failed";
 
-      let errorWithSchema = `Error: ${errorText}`;
+      let errorWithSchema = `Error: ${formatContextModeRuntimeError(serverName, toolMeta.name ?? toolMeta.originalName, errorText) ?? errorText}`;
       if (toolMeta.inputSchema) {
         errorWithSchema += `\n\nExpected parameters:\n${formatSchema(toolMeta.inputSchema)}`;
       }
@@ -784,7 +802,7 @@ export async function executeCall(
     const message = error instanceof Error ? error.message : String(error);
     uiSession?.sendToolCancelled(message);
 
-    let errorWithSchema = `Failed to call tool: ${message}`;
+    let errorWithSchema = `Failed to call tool: ${formatContextModeRuntimeError(serverName, toolMeta.name ?? toolMeta.originalName, message) ?? message}`;
     if (toolMeta.inputSchema) {
       errorWithSchema += `\n\nExpected parameters:\n${formatSchema(toolMeta.inputSchema)}`;
     }

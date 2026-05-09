@@ -16,10 +16,10 @@ const BUILTIN_NAMES = new Set(["read", "bash", "edit", "write", "grep", "find", 
 
 const CONTEXT_MODE_ARG_HINT =
   `\n\nPi MCP call format: pass a JSON object with named fields, never positional args and never empty args. ` +
-  `For ctx_execute prefer {"language":"javascript","code":"console.log('summary')"} or {"language":"shell","code":"echo ok"}. ` +
+  `For ctx_execute prefer {"language":"javascript","code":"console.log('summary')"}; avoid language="shell" for PowerShell snippets on Windows. ` +
   `For ctx_execute_file use {"path":"/abs/file","language":"javascript","code":"console.log(FILE_CONTENT.length)"}. ` +
   `Avoid Python for quick ctx_execute snippets on Windows when the code contains string escapes like '\\n'; JSON/tool escaping can turn them into literal newlines and cause SyntaxError. ` +
-  `If Python is necessary, avoid quoted newline escapes: use chr(10), print(*items, sep=chr(10)), or a print loop. PowerShell boolean switches use -CaseSensitive (no colon).`;
+  `If Python is necessary, avoid quoted newline escapes: use chr(10), print(*items, sep=chr(10)), or a print loop. For Windows PowerShell diagnostics, write/run a .ps1 with bash/ssh or use JavaScript child_process; do not paste complex pipelines into ctx_execute shell.`;
 
 function isContextModeTool(spec: DirectToolSpec): boolean {
   return spec.serverName === "context-mode" || spec.prefixedName.startsWith("context_mode_") || spec.originalName.startsWith("ctx_");
@@ -305,7 +305,7 @@ export function buildProxyDescription(
   desc += `  mcp({ tool: "context_mode_ctx_execute", args: '{"language":"javascript","code":"console.log(\\"ok\\")"}' })\n`;
   desc += `  mcp({ tool: "context_mode_ctx_execute_file", args: '{"path":"README.md","language":"javascript","code":"console.log(FILE_CONTENT.slice(0,80))"}' })\n`;
   desc += `  Never call ctx_execute/ctx_execute_file with empty args or positional args.\n`;
-  desc += `  Windows note: prefer language="javascript"/"python" for search/parsing; PowerShell boolean switches use -CaseSensitive, not -CaseSensitive:.\n`;
+  desc += `  Windows note: prefer language="javascript" for search/parsing. Avoid language="shell" for PowerShell pipelines; write/run a .ps1 with bash/ssh or use JavaScript child_process. PowerShell boolean switches use -CaseSensitive, not -CaseSensitive:.\n`;
   desc += `\nMode: tool (call) > connect > describe > search > server (list) > action > nothing (status)`;
 
   return desc;
